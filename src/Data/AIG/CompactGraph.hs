@@ -1,48 +1,48 @@
-{- |
-Module      : Data.AIG.CompactGraph
-Copyright   : (c) Galois, Inc. 2021
-License     : BSD3
-Maintainer  : atomb@galois.com
-Stability   : experimental
-Portability : portable
-
-A pure Haskell implementation of the IsAIG class with support for AIGER
-and CNF file creation.
--}
 {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ViewPatterns #-}
+
+-- |
+-- Module      : Data.AIG.CompactGraph
+-- Copyright   : (c) Galois, Inc. 2021
+-- License     : BSD3
+-- Maintainer  : atomb@galois.com
+-- Stability   : experimental
+-- Portability : portable
+--
+-- A pure Haskell implementation of the IsAIG class with support for AIGER
+-- and CNF file creation.
 module Data.AIG.CompactGraph
-  ( CompactGraph
-  , CompactLit
-  , CompactNetwork
-  , compactProxy
-  , newCompactGraph
-  ) where
+  ( CompactGraph,
+    CompactLit,
+    CompactNetwork,
+    compactProxy,
+    newCompactGraph,
+  )
+where
 
 import Control.Monad (forM_, replicateM)
+import Data.AIG.Interface hiding (xor)
 import qualified Data.Attoparsec.ByteString.Char8 as AttoC8
 import qualified Data.Attoparsec.Combinator as Comb
 import Data.Attoparsec.Zepto (Parser)
 import qualified Data.Attoparsec.Zepto as Zepto
-import Data.Bits (shiftL, shiftR, (.&.), (.|.), xor, testBit)
-import Data.IORef (IORef, newIORef, modifyIORef', readIORef, writeIORef)
-import Data.List (elemIndex, intersperse)
 import Data.Bimap (Bimap)
-import Data.Map (Map)
 import qualified Data.Bimap as Bimap
-import qualified Data.Map.Strict as Map
+import Data.Bits (shiftL, shiftR, testBit, xor, (.&.), (.|.))
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Char8 as BSC8
 import qualified Data.ByteString.Builder as BS
+import qualified Data.ByteString.Char8 as BSC8
 import qualified Data.ByteString.Unsafe as BSU
-import Data.Word (Word8, Word32)
-import System.IO (Handle, withFile, IOMode(..))
-
-import Data.AIG.Interface hiding (xor)
+import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
+import Data.List (elemIndex, intersperse)
+import Data.Map (Map)
+import qualified Data.Map.Strict as Map
+import Data.Word (Word32, Word8)
+import System.IO (Handle, IOMode (..), withFile)
 
 -- | A variable representing either an input or the intermediate result
 -- of conjoining two literals of `CompactLit` type.
@@ -53,24 +53,26 @@ nextVar :: Var -> Var
 nextVar (Var v) = Var (v + 1)
 
 ------------------------------------------------------------------
+
 -- | A compact "Graph" datastructure similar to the AIGER format.
-data CompactGraph s =
-  CompactGraph {
-    maxVar  :: IORef Var
-    -- ^ The largest variable ID used so far.
-  , inputs  :: IORef [Var]
-    -- ^ Inputs, in reverse order!
-  , andMap  :: IORef (Bimap Var (CompactLit s, CompactLit s))
-    -- ^ A map from and gate variables to their input literals.
+data CompactGraph s
+  = CompactGraph
+  { -- | The largest variable ID used so far.
+    maxVar :: IORef Var,
+    -- | Inputs, in reverse order!
+    inputs :: IORef [Var],
+    -- | A map from and gate variables to their input literals.
+    andMap :: IORef (Bimap Var (CompactLit s, CompactLit s))
   }
 
 ------------------------------------------------------------------
+
 -- | A literal in a CompactGraph. A literal is a variable (of `Var`
 -- type) paired with an associated sign/polarity: either negated or
 -- non-negated. The compact `Word32` representation means that a graph
 -- can contain as most 2^^31-1 variables.
 newtype CompactLit s = CompactLit Word32
- deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show)
 
 type CompactNetwork s = Network CompactLit CompactGraph
 
@@ -100,15 +102,17 @@ copySign (CompactLit src) (CompactLit dst) =
 
 newCompactGraph :: IO (CompactGraph s)
 newCompactGraph =
-  do maxVar  <- newIORef (Var 0)
-     inputs  <- newIORef []
-     andMap  <- newIORef Bimap.empty
-     return (CompactGraph {..})
+  do
+    maxVar <- newIORef (Var 0)
+    inputs <- newIORef []
+    andMap <- newIORef Bimap.empty
+    return (CompactGraph {..})
 
 newVar :: CompactGraph s -> IO Var
 newVar g =
-  do modifyIORef' (maxVar g) nextVar
-     readIORef (maxVar g)
+  do
+    modifyIORef' (maxVar g) nextVar
+    readIORef (maxVar g)
 
 -- | Create a map associating a new destination variable with each
 -- existing variable. Used to ensure the ordering invariants of the
@@ -118,9 +122,9 @@ mkVarMap ::
   Bimap Var (CompactLit s, CompactLit s) ->
   (Map Var Var)
 mkVarMap ins gateMap =
-  Map.fromList (zip varList [Var 0..])
-    where
-      varList = [Var 0] ++ ins ++ Bimap.keys gateMap
+  Map.fromList (zip varList [Var 0 ..])
+  where
+    varList = [Var 0] ++ ins ++ Bimap.keys gateMap
 
 -- | Adjust a literal according to the given variable mapping.
 lookupLit :: CompactLit s -> Map Var Var -> Maybe (CompactLit s)
@@ -160,13 +164,16 @@ writeHeader ::
   Bimap Var (CompactLit s, CompactLit s) ->
   IO ()
 writeHeader h format (Var var) ins latches outs gateMap =
-  do hPutBBLn h $ bsUnwords [ BS.byteString (modeString format)
-                            , BS.word32Dec var
-                            , BS.intDec (length ins)
-                            , BS.intDec latches
-                            , BS.intDec (length outs)
-                            , BS.intDec (Bimap.size gateMap)
-                            ]
+  do
+    hPutBBLn h $
+      bsUnwords
+        [ BS.byteString (modeString format),
+          BS.word32Dec var,
+          BS.intDec (length ins),
+          BS.intDec latches,
+          BS.intDec (length outs),
+          BS.intDec (Bimap.size gateMap)
+        ]
 
 -- | Write AIGER input lines to the given handle.
 writeInputs :: Handle -> AIGFileMode -> Int -> Map Var Var -> [Var] -> IO ()
@@ -178,7 +185,8 @@ writeInputs h ASCII latches varMap ins =
     case varToLit <$> Map.lookup v varMap of
       Just (CompactLit i) -> hPutBBLn h $ BS.word32Dec i
       Nothing -> fail $ "Input not found: " ++ show v
-  where inCount = length ins - latches
+  where
+    inCount = length ins - latches
 
 -- | Write AIGER latch lines to the given handle.
 writeLatches ::
@@ -194,9 +202,12 @@ writeLatches h format latches varMap ins outs =
     case (Map.lookup v varMap, lookupLit n varMap) of
       (Just (Var vi), Just (CompactLit ni)) ->
         case format of
-          ASCII -> hPutBBLn h $ bsUnwords [ BS.word32Dec vi
-                                          , BS.word32Dec ni
-                                          ]
+          ASCII ->
+            hPutBBLn h $
+              bsUnwords
+                [ BS.word32Dec vi,
+                  BS.word32Dec ni
+                ]
           Binary -> hPutBBLn h $ BS.word32Dec ni
       _ -> fail $ "Latch not found: " ++ show v ++ " " ++ show n
   where
@@ -211,7 +222,8 @@ writeOutputs h latches varMap outs =
     case copySign l <$> lookupLit l varMap of
       Just (CompactLit i) -> hPutBBLn h $ BS.word32Dec i
       Nothing -> fail $ "Output not found: " ++ show l
-  where outCount = length outs - latches
+  where
+    outCount = length outs - latches
 
 -- | Write AIGER and gate lines or bytes to the given handle.
 writeAnds ::
@@ -222,9 +234,10 @@ writeAnds ::
   IO ()
 writeAnds h format varMap gateMap =
   forM_ (Bimap.assocs gateMap) $ \(v, (l, r)) ->
-    case (varToLit <$> Map.lookup v varMap
-         , lookupLit l varMap
-         , lookupLit r varMap) of
+    case ( varToLit <$> Map.lookup v varMap,
+           lookupLit l varMap,
+           lookupLit r varMap
+         ) of
       (Just vi, Just li, Just ri) ->
         writeAnd h format vi li ri
       _ -> fail $ "And not found: " ++ show (l, r)
@@ -240,21 +253,25 @@ writeAnd ::
 writeAnd h format (CompactLit v) (CompactLit l) (CompactLit r) =
   case format of
     ASCII ->
-      hPutBBLn h $ bsUnwords [ BS.word32Dec v
-                             , BS.word32Dec l
-                             , BS.word32Dec r
-                             ]
+      hPutBBLn h $
+        bsUnwords
+          [ BS.word32Dec v,
+            BS.word32Dec l,
+            BS.word32Dec r
+          ]
     Binary ->
-      do BS.hPutBuilder h (encodeDifference (v - l))
-         BS.hPutBuilder h (encodeDifference (l - r))
+      do
+        BS.hPutBuilder h (encodeDifference (v - l))
+        BS.hPutBuilder h (encodeDifference (l - r))
 
 -- | Encode a 32-bit value, representing a difference, in a variable
 -- number of bytes.
 encodeDifference :: Word32 -> BS.Builder
 encodeDifference w@(fromIntegral -> b)
   | w < 0x80 = BS.word8 b
-  | otherwise = BS.word8 ((b .&. 0x7f) .|. 0x80) <>
-                encodeDifference (w `shiftR` 7)
+  | otherwise =
+      BS.word8 ((b .&. 0x7f) .|. 0x80)
+        <> encodeDifference (w `shiftR` 7)
 
 ------------------------------------------------------------------
 -- AIG parsing
@@ -306,7 +323,7 @@ decimal = do
   digits <- Zepto.takeWhile wordIsDigit
   case BSC8.readInt digits of
     Nothing -> fail "somehow this didn't work"
-    Just (i,_) -> pure i
+    Just (i, _) -> pure i
 
 -- Taken from the @chronos@ library, which is licensed under the 3-Clause
 -- BSD License.
@@ -318,79 +335,87 @@ getIntWordsLine = getIntWords <* skipWhile AttoC8.isEndOfLine
 
 getHeader :: Parser (Int, Int, Int, Int, Int)
 getHeader =
-  do Zepto.string (modeString Binary)
-     spaces
-     ns <- getIntWordsLine
-     case ns of
-       [m, i, l, o, a] -> return (m, i, l, o, a)
-       _ -> fail $ "Invalid AIG header: " ++ show ns
+  do
+    Zepto.string (modeString Binary)
+    spaces
+    ns <- getIntWordsLine
+    case ns of
+      [m, i, l, o, a] -> return (m, i, l, o, a)
+      _ -> fail $ "Invalid AIG header: " ++ show ns
 
-getOutput :: Parser (CompactLit s)
-getOutput =
-  do ns <- getIntWordsLine
-     case ns of
-       [n] -> return (CompactLit (fromIntegral n))
-       _ -> fail $ "Invalid output line: " ++ show ns
+getOutputs :: Int -> Parser [CompactLit s]
+getOutputs l =
+  do
+    ns <- getIntWordsLine
+    if length ns == l
+      then
+        return (map (CompactLit . fromIntegral) ns)
+      else
+        fail $ "Invalid output line: " ++ show ns
 
 getDifference :: Parser Word32
 getDifference = go 0 0
   where
-    addByte x b i = x .|. (((fromIntegral b) .&. 0x7f) `shiftL` (7*i))
+    addByte x b i = x .|. (((fromIntegral b) .&. 0x7f) `shiftL` (7 * i))
     go x i =
-      do b <- getWord8
-         let x' = addByte x b i
-         if b .&. 0x80 /= 0 then go x' (i + 1) else return x'
+      do
+        b <- getWord8
+        let x' = addByte x b i
+        if b .&. 0x80 /= 0 then go x' (i + 1) else return x'
 
 getDifferences :: Parser (Word32, Word32)
 getDifferences = (,) <$> getDifference <*> getDifference
 
 getGraph :: Parser (Var, [Var], [CompactLit s], Bimap Var (CompactLit s, CompactLit s))
 getGraph =
-  do (maxvar, ninputs, nlatches, nouts, nands) <- getHeader
-     outputs <- replicateM (nlatches + nouts) getOutput
-     diffPairs <- replicateM nands getDifferences
-     let maxInput = fromIntegral ninputs
-         inputs = [Var 1 .. Var maxInput]
-         andVars = take (length diffPairs) [(maxInput + 1) ..]
-         addDiff v (ld, rd) = (Var v, (CompactLit l, CompactLit r))
-           where
-             l = (v `shiftL` 1) - ld
-             r = l - rd
-         andAssocs = zipWith addDiff andVars diffPairs
-     return ( Var (fromIntegral maxvar)
-            , reverse inputs
-            , outputs
-            , Bimap.fromList andAssocs
-            )
+  do
+    (maxvar, ninputs, nlatches, nouts, nands) <- getHeader
+    outputs <- getOutputs (nlatches + nouts)
+    diffPairs <- replicateM nands getDifferences
+    let maxInput = fromIntegral ninputs
+        inputs = [Var 1 .. Var maxInput]
+        andVars = take (length diffPairs) [(maxInput + 1) ..]
+        addDiff v (ld, rd) = (Var v, (CompactLit l, CompactLit r))
+          where
+            l = (v `shiftL` 1) - ld
+            r = l - rd
+        andAssocs = zipWith addDiff andVars diffPairs
+    return
+      ( Var (fromIntegral maxvar),
+        reverse inputs,
+        outputs,
+        Bimap.fromList andAssocs
+      )
 
 abstractEval ::
   CompactGraph s ->
   (LitView a -> IO a) ->
   IO (CompactLit s -> IO a, Map (CompactLit s) a)
 abstractEval g view =
-  do r <- newIORef Map.empty
+  do
+    r <- newIORef Map.empty
 
-     let memo l t = do
-           m <- readIORef r
-           writeIORef r $! Map.insert l t m
-           return t
+    let memo l t = do
+          m <- readIORef r
+          writeIORef r $! Map.insert l t m
+          return t
 
-         go (And x y)    = view =<< (pure And <*> objTerm x <*> objTerm y)
-         go (NotAnd x y) = view =<< (pure NotAnd <*> objTerm x <*> objTerm y)
-         go (Input i)    = view (Input i)
-         go (NotInput i) = view (NotInput i)
-         go TrueLit      = view TrueLit
-         go FalseLit     = view FalseLit
+        go (And x y) = view =<< (pure And <*> objTerm x <*> objTerm y)
+        go (NotAnd x y) = view =<< (pure NotAnd <*> objTerm x <*> objTerm y)
+        go (Input i) = view (Input i)
+        go (NotInput i) = view (NotInput i)
+        go TrueLit = view TrueLit
+        go FalseLit = view FalseLit
 
-         objTerm l =
-           do m <- readIORef r
-              case Map.lookup l m of
-                Just t -> return t
-                _ -> memo l =<< go =<< litView g l
+        objTerm l =
+          do
+            m <- readIORef r
+            case Map.lookup l m of
+              Just t -> return t
+              _ -> memo l =<< go =<< litView g l
 
-
-     m <- readIORef r
-     return (objTerm, m)
+    m <- readIORef r
+    return (objTerm, m)
 
 ------------------------------------------------------------------
 -- Class instances
@@ -403,86 +428,97 @@ instance IsAIG CompactLit CompactGraph where
   withNewGraph _proxy k = k =<< newCompactGraph
 
   aigerNetwork _proxy fp =
-    do -- See Note [Parsing the AIGER format]
-       res <- Zepto.parse getGraph <$> BS.readFile fp
-       (maxv, inps, outs, gates) <- either fail pure res
-       maxVar  <- newIORef maxv
-       inputs  <- newIORef inps
-       andMap  <- newIORef gates
-       return (Network CompactGraph {..} outs)
+    do
+      -- See Note [Parsing the AIGER format]
+      res <- Zepto.parse getGraph <$> BS.readFile fp
+      (maxv, inps, outs, gates) <- either fail pure res
+      maxVar <- newIORef maxv
+      inputs <- newIORef inps
+      andMap <- newIORef gates
+      return (Network CompactGraph {..} outs)
 
-  trueLit  _g = CompactLit 1
+  trueLit _g = CompactLit 1
   falseLit _g = CompactLit 0
 
   newInput g =
-    do v <- newVar g
-       modifyIORef' (inputs g) (v :)
-       return (varToLit v)
+    do
+      v <- newVar g
+      modifyIORef' (inputs g) (v :)
+      return (varToLit v)
 
   and g x y =
-    do let l = max x y
-           r = min x y
-       gateMap <- readIORef (andMap g)
-       case Bimap.lookupR (l, r) gateMap of
-         Nothing ->
-           do v <- newVar g
-              writeIORef (andMap g) $ Bimap.insert v (l, r) gateMap
-              return (varToLit v)
-         Just v -> return (varToLit v)
+    do
+      let l = max x y
+          r = min x y
+      gateMap <- readIORef (andMap g)
+      case Bimap.lookupR (l, r) gateMap of
+        Nothing ->
+          do
+            v <- newVar g
+            writeIORef (andMap g) $ Bimap.insert v (l, r) gateMap
+            return (varToLit v)
+        Just v -> return (varToLit v)
 
   inputCount g = length <$> readIORef (inputs g)
 
-  -- | Get input at given index in the graph.
+  -- \| Get input at given index in the graph.
   getInput g i = varToLit . (!! i) . reverse <$> readIORef (inputs g)
 
   writeAiger fp ntk = writeAigerWithLatches fp ntk 0
 
   writeAigerWithLatches fp (Network g outs) latches =
     withFile fp WriteMode $ \h ->
-    do var <- readIORef (maxVar g)
-       ins <- reverse <$> readIORef (inputs g)
-       gateMap <- readIORef (andMap g)
-       let vm = mkVarMap ins gateMap
-           format = Binary
-       writeHeader h format var ins latches outs gateMap
-       writeInputs h format latches vm ins
-       writeLatches h format latches vm ins outs
-       writeOutputs h latches vm outs
-       writeAnds h format vm gateMap
+      do
+        var <- readIORef (maxVar g)
+        ins <- reverse <$> readIORef (inputs g)
+        gateMap <- readIORef (andMap g)
+        let vm = mkVarMap ins gateMap
+            format = Binary
+        writeHeader h format var ins latches outs gateMap
+        writeInputs h format latches vm ins
+        writeLatches h format latches vm ins outs
+        writeOutputs h latches vm outs
+        writeAnds h format vm gateMap
 
   writeCNF g out fp =
     withFile fp WriteMode $ \h ->
-    do Var var <- readIORef (maxVar g)
-       ins <- reverse <$> readIORef (inputs g)
-       gateMap <- readIORef (andMap g)
-       let vm = mkVarMap ins gateMap
-           nvars = fromIntegral var + 1
-           nclauses = (3 * Bimap.size gateMap) + 2
-           litToCNF lit =
-             case Map.lookup (litToVar lit) vm of
-               Just (Var v) ->
-                 do let n = fromIntegral v + 1
+      do
+        Var var <- readIORef (maxVar g)
+        ins <- reverse <$> readIORef (inputs g)
+        gateMap <- readIORef (andMap g)
+        let vm = mkVarMap ins gateMap
+            nvars = fromIntegral var + 1
+            nclauses = (3 * Bimap.size gateMap) + 2
+            litToCNF lit =
+              case Map.lookup (litToVar lit) vm of
+                Just (Var v) ->
+                  do
+                    let n = fromIntegral v + 1
                     return $ if litNegated lit then (-n) else n
-               Nothing -> fail $ "Literal not found: " ++ show lit
-           putClause lits =
-             hPutBBLn h $ (bsUnwords . map BS.intDec) lits <> " 0"
-       hPutBBLn h $ bsUnwords [ "p", "cnf"
-                              , BS.intDec nvars
-                              , BS.intDec nclauses
-                              ]
-       forM_ (Bimap.assocs gateMap) $ \(v, (ll, rl)) ->
-         do n <- litToCNF (varToLit v)
+                Nothing -> fail $ "Literal not found: " ++ show lit
+            putClause lits =
+              hPutBBLn h $ (bsUnwords . map BS.intDec) lits <> " 0"
+        hPutBBLn h $
+          bsUnwords
+            [ "p",
+              "cnf",
+              BS.intDec nvars,
+              BS.intDec nclauses
+            ]
+        forM_ (Bimap.assocs gateMap) $ \(v, (ll, rl)) ->
+          do
+            n <- litToCNF (varToLit v)
             li <- litToCNF ll
             ri <- litToCNF rl
             -- 3 clauses for each gate
             putClause [-n, li]
             putClause [-n, ri]
             putClause [n, -li, -ri]
-       ovar <- litToCNF out
-       -- 2 more clauses
-       putClause [ovar]
-       putClause [-1]
-       return [2 .. length ins + 1]
+        ovar <- litToCNF out
+        -- 2 more clauses
+        putClause [ovar]
+        putClause [-1]
+        return [2 .. length ins + 1]
 
   checkSat _g _l =
     -- Could call out to ABC for this?
@@ -492,34 +528,36 @@ instance IsAIG CompactLit CompactGraph where
     -- Could call out to ABC for this?
     fail "Cannot CEC graphs in the CompactGraph implementation"
 
-  -- | Evaluate the network on a set of concrete inputs.
+  -- \| Evaluate the network on a set of concrete inputs.
   evaluator g xs =
-    do m <- snd <$> abstractEval g eval
-       return (m Map.!)
+    do
+      m <- snd <$> abstractEval g eval
+      return (m Map.!)
     where
-      eval (And l r)    = return $ l && r
+      eval (And l r) = return $ l && r
       eval (NotAnd l r) = return $ Prelude.not (l && r)
-      eval (Input i)    = return $ xs !! i
+      eval (Input i) = return $ xs !! i
       eval (NotInput i) = return $ Prelude.not (xs !! i)
-      eval TrueLit      = return True
-      eval FalseLit     = return False
+      eval TrueLit = return True
+      eval FalseLit = return False
 
-  -- | Examine the outermost structure of a literal to see how it was
+  -- \| Examine the outermost structure of a literal to see how it was
   -- constructed. This could certainly be made more efficient if
   -- necessary.
   litView g l =
-    do ins <- reverse <$> readIORef (inputs g)
-       gateMap <- readIORef (andMap g)
-       let v = litToVar l
-       case (elemIndex v ins, Bimap.lookup v gateMap, litNegated l) of
-         (Just i, _, False)        -> return (Input i)
-         (Just i, _, True)         -> return (NotInput i)
-         (_, Just (l1, l2), False) -> return (And l1 l2)
-         (_, Just (l1, l2), True)  -> return (NotAnd l1 l2)
-         _ | l == falseLit g       -> return FalseLit
-         _ | l == trueLit g        -> return TrueLit
-         _ -> fail $ "Invalid literal: " ++ show l
+    do
+      ins <- reverse <$> readIORef (inputs g)
+      gateMap <- readIORef (andMap g)
+      let v = litToVar l
+      case (elemIndex v ins, Bimap.lookup v gateMap, litNegated l) of
+        (Just i, _, False) -> return (Input i)
+        (Just i, _, True) -> return (NotInput i)
+        (_, Just (l1, l2), False) -> return (And l1 l2)
+        (_, Just (l1, l2), True) -> return (NotAnd l1 l2)
+        _ | l == falseLit g -> return FalseLit
+        _ | l == trueLit g -> return TrueLit
+        _ -> fail $ "Invalid literal: " ++ show l
 
-  -- | Build an evaluation function over an AIG using the provided view
+  -- \| Build an evaluation function over an AIG using the provided view
   -- function. Derived from the version in Data.ABC.AIG.
   abstractEvaluateAIG g view = fst <$> abstractEval g view
