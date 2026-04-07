@@ -504,6 +504,18 @@ instance IsAIG CompactLit CompactGraph where
       eval TrueLit      = return True
       eval FalseLit     = return False
 
+  -- | Evaluate the network on a set of concrete inputs.
+  evaluate (Network g outputs) inputs =
+    fst <$> abstractEval g eval >>= (flip mapM) outputs
+    where
+      eval (And l r)    = return $ l && r
+      eval (NotAnd l r) = return $ Prelude.not (l && r)
+      eval (Input i)    = return $ inputs !! i
+      eval (NotInput i) = return $ Prelude.not (inputs !! i)
+      eval TrueLit      = return True
+      eval FalseLit     = return False
+
+
   -- | Examine the outermost structure of a literal to see how it was
   -- constructed. This could certainly be made more efficient if
   -- necessary.
@@ -523,3 +535,4 @@ instance IsAIG CompactLit CompactGraph where
   -- | Build an evaluation function over an AIG using the provided view
   -- function. Derived from the version in Data.ABC.AIG.
   abstractEvaluateAIG g view = fst <$> abstractEval g view
+
