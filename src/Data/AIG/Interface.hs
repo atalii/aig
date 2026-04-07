@@ -216,15 +216,14 @@ class IsLit l => IsAIG l g | g -> l where
   -- | Evaluate the network on a set of concrete inputs.
   evaluator :: g s
             -> [Bool]
-            -> IO (l s -> Bool)
+            -> IO (l s -> IO Bool)
 
   -- | Evaluate the network on a set of concrete inputs.
   evaluate :: Network l g
            -> [Bool]
            -> IO [Bool]
-  evaluate (Network g outputs) inputs = do
-    f <- evaluator g inputs
-    return (f <$> outputs)
+  evaluate (Network g outputs) inputs =
+    evaluator g inputs >>= forM outputs
 
   -- | Examine the outermost structure of a literal to see how it was constructed
   litView :: g s -> l s -> IO (LitView (l s))
@@ -508,7 +507,7 @@ instance IsAIG BasicLit BasicGraph where
          NotInput _ -> Nothing
 
   -- | Evaluate the network on a set of concrete inputs.
-  evaluator _g xs = return (\(BasicLit x) -> eval x)
+  evaluator _g xs = return (\(BasicLit x) -> return (eval x))
     where
      eval :: LitTree -> Bool
      eval (LitTree x) = eval' x

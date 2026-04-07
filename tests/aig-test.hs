@@ -6,6 +6,7 @@ import Test.Tasty.Runners.AntXML
 
 import Tests.FileIO
 import Tests.Operations
+import Tests.Eval
 
 ------------------------------------------------------------------------
 -- Runner
@@ -28,4 +29,5 @@ tests =
     testGroup "AIG"
     [ testGroup "Bitvector operations" $ op_tests
     , testGroup "File I/O" $ io_tests
+    , testGroup "Evaluation" $ eval_tests
     ]

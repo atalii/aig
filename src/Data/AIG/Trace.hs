@@ -26,7 +26,6 @@ import Data.Kind
 import Data.List (intersperse)
 import System.IO
 import Control.Exception
-import System.IO.Unsafe
 
 import Data.AIG.Interface
 
@@ -188,13 +187,13 @@ instance (IsAIG l g, Traceable l) => IsAIG (TraceLit l) (TraceGraph l g) where
   evaluator g ins =
         do mh <- readIORef (tActive g)
            maybe (return ()) (\h -> (hPutStrLn h $ unwords ["building evaluator",show ins]) >> hFlush h) mh
-           let traceIO l x h = (hPutStrLn h $ unwords ["evaluator call",show ins,showLit l,show x]) >> hFlush h
+           let printTrace l x h = (hPutStrLn h $ unwords ["evaluator call",show ins,showLit l,show x]) >> hFlush h
            let trace l x =
                   case mh of
-                     Nothing -> x
-                     Just h  -> seq (unsafePerformIO (traceIO l x h)) x
+                     Nothing -> return x
+                     Just h  -> printTrace l x h >> return x
            ev <- evaluator (tGraph g) ins
-           return (\(TraceLit l) -> trace l $ ev l)
+           return (\(TraceLit l) -> ev l >>= trace l)
 
   litView g = traceOp g "litView" $ \(TraceLit l) -> fmap (fmap TraceLit) (litView (tGraph g) l)
 

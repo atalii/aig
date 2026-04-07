@@ -366,7 +366,7 @@ getGraph =
 abstractEval ::
   CompactGraph s ->
   (LitView a -> IO a) ->
-  IO (CompactLit s -> IO a, Map (CompactLit s) a)
+  IO (CompactLit s -> IO a)
 abstractEval g view =
   do r <- newIORef Map.empty
 
@@ -389,8 +389,7 @@ abstractEval g view =
                 _ -> memo l =<< go =<< litView g l
 
 
-     m <- readIORef r
-     return (objTerm, m)
+     return objTerm
 
 ------------------------------------------------------------------
 -- Class instances
@@ -493,9 +492,7 @@ instance IsAIG CompactLit CompactGraph where
     fail "Cannot CEC graphs in the CompactGraph implementation"
 
   -- | Evaluate the network on a set of concrete inputs.
-  evaluator g xs =
-    do m <- snd <$> abstractEval g eval
-       return (m Map.!)
+  evaluator g xs = abstractEval g eval
     where
       eval (And l r)    = return $ l && r
       eval (NotAnd l r) = return $ Prelude.not (l && r)
@@ -522,4 +519,4 @@ instance IsAIG CompactLit CompactGraph where
 
   -- | Build an evaluation function over an AIG using the provided view
   -- function. Derived from the version in Data.ABC.AIG.
-  abstractEvaluateAIG g view = fst <$> abstractEval g view
+  abstractEvaluateAIG g view = abstractEval g view
