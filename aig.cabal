@@ -54,6 +54,7 @@ test-suite aig-test
 
   main-is: aig-test.hs
   other-modules:
+    Tests.Eval
     Tests.FileIO
     Tests.Operations
 
